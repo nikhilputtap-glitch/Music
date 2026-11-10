@@ -1,0 +1,11 @@
+{
+  "name": "unlock-tunes-app",
+  "version": "1.0.0",
+  "description": "UNLOCK TUNES - Every Unlock Deserves a Soundtrack. Native Android App & Interactive Web Portal.",
+  "scripts": {
+    "build": "echo 'Vercel build ready'"
+  },
+  "keywords": ["android", "music", "unlock", "soundtrack", "synthwave"],
+  "author": "Nikhil",
+  "license": "MIT"
+}

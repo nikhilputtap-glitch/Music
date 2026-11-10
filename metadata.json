@@ -1,0 +1,6 @@
+{
+  "name": "Unlock Tunes",
+  "description": "Every Unlock Deserves a Soundtrack. Automatically plays your chosen song on smartphone unlock.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
