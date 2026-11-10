@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -329,6 +330,91 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                             icon = Icons.Default.GraphicEq,
                             testTag = "full_player_button"
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Explicit "SET / ACTIVE AS UNLOCK SOUNDTRACK" Button
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (settings.autoPlayEnabled)
+                                    Brush.horizontalGradient(listOf(NeonGreen.copy(alpha = 0.2f), ElectricBlue.copy(alpha = 0.2f)))
+                                else
+                                    Brush.horizontalGradient(listOf(ElectricBlue, NeonPurple))
+                            )
+                            .clickable {
+                                selectedSong?.let { viewModel.activateSongForUnlock(it.id) }
+                            }
+                            .padding(vertical = 11.dp, horizontal = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (settings.autoPlayEnabled) Icons.Default.CheckCircle else Icons.Default.PlayArrow,
+                                contentDescription = null,
+                                tint = if (settings.autoPlayEnabled) NeonGreen else AmoledBlack,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (settings.autoPlayEnabled)
+                                    "✓ ACTIVE: WILL PLAY AUTOMATICALLY ON PHONE UNLOCK"
+                                else
+                                    "⚡ SET THIS SONG AS UNLOCK SOUNDTRACK",
+                                color = if (settings.autoPlayEnabled) NeonGreen else AmoledBlack,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // Real Phone Testing Step-by-Step Guide
+        item {
+            GlassCard(
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = Color(0xFF140D2B)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(NeonGreen.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = NeonGreen,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "WORKS AUTOMATICALLY EVEN WHEN APP IS CLOSED:",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NeonGreen,
+                            letterSpacing = 0.8.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "1. Press your phone's Power button to Lock\n2. Unlock your phone (Fingerprint/PIN)\n3. Song will play automatically for 30s every time!",
+                            fontSize = 12.sp,
+                            color = TextPrimary,
+                            lineHeight = 16.sp
                         )
                     }
                 }

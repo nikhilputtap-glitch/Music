@@ -245,101 +245,141 @@ fun SongSelectionScreen(
                     GlassCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { viewModel.selectSong(song.id) },
+                            .clickable { viewModel.activateSongForUnlock(song.id) },
                         highlightGlow = isSelected,
-                        backgroundColor = if (isSelected) AmoledCard.copy(alpha = 0.9f) else AmoledCard
+                        backgroundColor = if (isSelected) AmoledCard.copy(alpha = 0.95f) else AmoledCard
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Artwork / Icon
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (isSelected)
-                                            Brush.linearGradient(listOf(ElectricBlue, NeonPurple))
-                                        else
-                                            Brush.linearGradient(listOf(Color(0xFF281E48), Color(0xFF130E26)))
-                                    ),
-                                contentAlignment = Alignment.Center
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (song.isPreset) Icons.Default.Album else Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    tint = if (isSelected) AmoledBlack else ElectricBlue,
-                                    modifier = Modifier.size(26.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = song.title,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) ElectricBlue else TextPrimary,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    if (isSelected) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.CheckCircle,
-                                            contentDescription = "Active",
-                                            tint = NeonGreen,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                Text(
-                                    text = "${song.artist} • ${song.genre} • ${song.formattedDuration}",
-                                    fontSize = 12.sp,
-                                    color = TextSecondary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            // Actions: Preview Play / Stop and Delete
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = {
-                                        if (isCurrentlyPlaying) {
-                                            viewModel.stopPlayback()
-                                        } else {
-                                            viewModel.selectSong(song.id)
-                                            viewModel.playTestSoundtrack()
-                                        }
-                                    }
+                                // Artwork / Icon
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected)
+                                                Brush.linearGradient(listOf(ElectricBlue, NeonPurple))
+                                            else
+                                                Brush.linearGradient(listOf(Color(0xFF281E48), Color(0xFF130E26)))
+                                        ),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = if (isCurrentlyPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                        contentDescription = "Play/Stop",
-                                        tint = if (isCurrentlyPlaying) NeonMagenta else ElectricBlue
+                                        imageVector = if (song.isPreset) Icons.Default.Album else Icons.Default.MusicNote,
+                                        contentDescription = null,
+                                        tint = if (isSelected) AmoledBlack else ElectricBlue,
+                                        modifier = Modifier.size(26.dp)
                                     )
                                 }
 
-                                if (!song.isPreset) {
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = song.title,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) ElectricBlue else TextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        if (isSelected) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = "Active",
+                                                tint = NeonGreen,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Text(
+                                        text = "${song.artist} • ${song.genre} • ${song.formattedDuration}",
+                                        fontSize = 12.sp,
+                                        color = TextSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                // Actions: Preview Play / Stop and Delete
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
-                                        onClick = { viewModel.removeSong(song.id) }
+                                        onClick = {
+                                            if (isCurrentlyPlaying) {
+                                                viewModel.stopPlayback()
+                                            } else {
+                                                viewModel.selectSong(song.id)
+                                                viewModel.playTestSoundtrack()
+                                            }
+                                        }
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Delete,
-                                            contentDescription = "Remove Song",
-                                            tint = Color.Gray
+                                            imageVector = if (isCurrentlyPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                            contentDescription = "Play/Stop",
+                                            tint = if (isCurrentlyPlaying) NeonMagenta else ElectricBlue
                                         )
                                     }
+
+                                    if (!song.isPreset) {
+                                        IconButton(
+                                            onClick = { viewModel.removeSong(song.id) }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Remove Song",
+                                                tint = Color.Gray
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Big Dedicated "Set as Unlock Soundtrack" Button
+                            if (isSelected) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(NeonGreen.copy(alpha = 0.15f))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "✓ ACTIVE: PLAYS AUTOMATICALLY ON EVERY UNLOCK",
+                                        color = NeonGreen,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Brush.horizontalGradient(listOf(ElectricBlue, NeonPurple)))
+                                        .clickable { viewModel.activateSongForUnlock(song.id) }
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "⚡ SET THIS SONG FOR UNLOCK SCREEN",
+                                        color = AmoledBlack,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp
+                                    )
                                 }
                             }
                         }

@@ -5,12 +5,15 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.example.MainActivity
@@ -23,9 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -36,24 +37,43 @@ class UnlockPlaybackService : Service() {
     private lateinit var settingsRepository: SettingsRepository
     private var wakeLock: PowerManager.WakeLock? = null
     private var notificationJob: Job? = null
+    private var isReceiverRegistered = false
+
+    private val screenUnlockReceiver = object : BroadcastReceiver() {
+        private var lastUnlockTime = 0L
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_USER_PRESENT) {
+                val now = SystemClock.elapsedRealtime()
+                if (now - lastUnlockTime > 2500L) {
+                    lastUnlockTime = now
+                    handleStartPlayback(isTest = false)
+                }
+            }
+        }
+    }
 
     companion object {
+        const val ACTION_START_MONITORING = "com.nikhil.unlocktunes.START_MONITORING"
         const val ACTION_START_UNLOCK_PLAYBACK = "com.nikhil.unlocktunes.START_PLAYBACK"
         const val ACTION_STOP_PLAYBACK = "com.nikhil.unlocktunes.STOP_PLAYBACK"
         const val ACTION_TEST_PLAYBACK = "com.nikhil.unlocktunes.TEST_PLAYBACK"
+        const val ACTION_STOP_SERVICE = "com.nikhil.unlocktunes.STOP_SERVICE"
 
         const val CHANNEL_ID = "unlock_tunes_playback_channel"
         const val NOTIFICATION_ID = 1001
+
+        fun startMonitoring(context: Context) {
+            val intent = Intent(context, UnlockPlaybackService::class.java).apply {
+                action = ACTION_START_MONITORING
+            }
+            startServiceCompat(context, intent)
+        }
 
         fun startPlayback(context: Context, isTest: Boolean = false) {
             val intent = Intent(context, UnlockPlaybackService::class.java).apply {
                 action = if (isTest) ACTION_TEST_PLAYBACK else ACTION_START_UNLOCK_PLAYBACK
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            startServiceCompat(context, intent)
         }
 
         fun stopPlayback(context: Context) {
@@ -61,6 +81,25 @@ class UnlockPlaybackService : Service() {
                 action = ACTION_STOP_PLAYBACK
             }
             context.startService(intent)
+        }
+
+        fun stopMonitoring(context: Context) {
+            val intent = Intent(context, UnlockPlaybackService::class.java).apply {
+                action = ACTION_STOP_SERVICE
+            }
+            context.startService(intent)
+        }
+
+        private fun startServiceCompat(context: Context, intent: Intent) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -77,79 +116,122 @@ class UnlockPlaybackService : Service() {
         ).apply {
             setReferenceCounted(false)
         }
+
+        registerUnlockReceiver()
+    }
+
+    private fun registerUnlockReceiver() {
+        if (!isReceiverRegistered) {
+            try {
+                val filter = IntentFilter().apply {
+                    addAction(Intent.ACTION_USER_PRESENT)
+                    addAction(Intent.ACTION_SCREEN_ON)
+                    addAction(Intent.ACTION_SCREEN_OFF)
+                }
+                registerReceiver(screenUnlockReceiver, filter)
+                isReceiverRegistered = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        registerUnlockReceiver()
+
         when (intent?.action) {
-            ACTION_STOP_PLAYBACK -> {
-                handleStop()
+            ACTION_STOP_SERVICE -> {
+                handleStopService()
                 return START_NOT_STICKY
             }
-            ACTION_START_UNLOCK_PLAYBACK -> {
-                handleStartPlayback(isTest = false)
+            ACTION_STOP_PLAYBACK -> {
+                handleStopPlaybackOnly()
+                return START_STICKY
             }
             ACTION_TEST_PLAYBACK -> {
                 handleStartPlayback(isTest = true)
+                return START_STICKY
+            }
+            ACTION_START_UNLOCK_PLAYBACK -> {
+                handleStartPlayback(isTest = false)
+                return START_STICKY
+            }
+            ACTION_START_MONITORING -> {
+                showIdleMonitoringNotification()
+                return START_STICKY
             }
             else -> {
-                handleStartPlayback(isTest = false)
+                showIdleMonitoringNotification()
+                return START_STICKY
             }
         }
-        return START_NOT_STICKY
+    }
+
+    private fun showIdleMonitoringNotification() {
+        serviceScope.launch {
+            val settings = settingsRepository.getSettingsSnapshot()
+            val song = pickSong(settings)
+            val songName = song?.title ?: "Preset Soundtrack"
+
+            val notification = buildIdleNotification(songName)
+            startInForeground(notification)
+        }
     }
 
     private fun handleStartPlayback(isTest: Boolean) {
         serviceScope.launch {
             val settings = settingsRepository.getSettingsSnapshot()
 
-            // If not a test, check if playback is allowed
             if (!isTest) {
-                val (allowed, reason) = playerManager.shouldAllowPlayback(settings)
+                val (allowed, _) = playerManager.shouldAllowPlayback(settings)
                 if (!allowed) {
-                    stopSelf()
+                    showIdleMonitoringNotification()
                     return@launch
                 }
             }
 
-            // Determine which song to play
             val songToPlay = pickSong(settings)
             if (songToPlay == null) {
-                stopSelf()
+                showIdleMonitoringNotification()
                 return@launch
             }
 
-            // Acquire wakelock safely with timeout
+            // Acquire wakelock safely
             try {
                 wakeLock?.acquire((settings.playbackDurationSeconds + 5) * 1000L)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
 
-            // Start foreground service with notification
-            val initialNotification = buildNotification(songToPlay, 0, settings.playbackDurationSeconds)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                ServiceCompat.startForeground(
-                    this@UnlockPlaybackService,
-                    NOTIFICATION_ID,
-                    initialNotification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, initialNotification)
-            }
+            val playingNotification = buildPlayingNotification(songToPlay, 0, settings.playbackDurationSeconds)
+            startInForeground(playingNotification)
 
-            // Record unlock event if not test
             if (!isTest) {
                 settingsRepository.recordUnlockTriggered()
             }
 
-            // Start player
             playerManager.playSong(songToPlay, settings) {
                 handlePlaybackFinished()
             }
 
-            // Observe playback state to update notification countdown
             observePlaybackProgress(songToPlay)
+        }
+    }
+
+    private fun startInForeground(notification: Notification) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -161,7 +243,7 @@ class UnlockPlaybackService : Service() {
                 if (!state.isPlaying) {
                     handlePlaybackFinished()
                 } else {
-                    val updatedNotification = buildNotification(
+                    val updatedNotification = buildPlayingNotification(
                         song,
                         state.elapsedSeconds,
                         state.totalDurationSeconds
@@ -177,9 +259,7 @@ class UnlockPlaybackService : Service() {
         if (allSongs.isEmpty()) return null
 
         return when (settings.playMode) {
-            "RANDOM_SONG" -> {
-                allSongs.randomOrNull() ?: allSongs.firstOrNull()
-            }
+            "RANDOM_SONG" -> allSongs.randomOrNull() ?: allSongs.firstOrNull()
             "TIME_BASED" -> {
                 val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
                 val targetId = when (hour) {
@@ -192,14 +272,49 @@ class UnlockPlaybackService : Service() {
                     ?: allSongs.firstOrNull()
             }
             else -> {
-                // SAME_SONG (default)
-                allSongs.firstOrNull { it.id == settings.selectedSongId }
-                    ?: allSongs.firstOrNull()
+                allSongs.firstOrNull { it.id == settings.selectedSongId } ?: allSongs.firstOrNull()
             }
         }
     }
 
-    private fun buildNotification(
+    private fun buildIdleNotification(songTitle: String): Notification {
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val testIntent = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, UnlockPlaybackService::class.java).apply {
+                action = ACTION_TEST_PLAYBACK
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("UNLOCK TUNES • Monitoring Active")
+            .setContentText("Ready • Will play '$songTitle' on next unlock")
+            .setSubText("Soundtrack Active")
+            .setContentIntent(contentIntent)
+            .setOngoing(true)
+            .setSilent(true)
+            .addAction(
+                android.R.drawable.ic_media_play,
+                "Test Soundtrack",
+                testIntent
+            )
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
+    private fun buildPlayingNotification(
         song: SongItem,
         elapsedSeconds: Int,
         totalSeconds: Int
@@ -223,20 +338,19 @@ class UnlockPlaybackService : Service() {
         )
 
         val remaining = (totalSeconds - elapsedSeconds).coerceAtLeast(0)
-        val statusText = "Unlocked • Stopping in ${remaining}s"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("UNLOCK TUNES • ${song.title}")
-            .setContentText("${song.artist} | $statusText")
-            .setSubText("Soundtrack Active")
+            .setContentText("${song.artist} • Stopping in ${remaining}s")
+            .setSubText("Playing Unlock Soundtrack")
             .setContentIntent(contentIntent)
             .setOngoing(true)
             .setSilent(true)
             .setProgress(totalSeconds, elapsedSeconds, false)
             .addAction(
                 android.R.drawable.ic_media_pause,
-                "Stop Soundtrack",
+                "Stop",
                 stopIntent
             )
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -248,13 +362,26 @@ class UnlockPlaybackService : Service() {
         notificationJob?.cancel()
         notificationJob = null
         releaseWakeLock()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Stay alive in background! Transition back to idle monitoring
+        showIdleMonitoringNotification()
     }
 
-    private fun handleStop() {
+    private fun handleStopPlaybackOnly() {
         playerManager.stopPlayback()
         handlePlaybackFinished()
+    }
+
+    private fun handleStopService() {
+        playerManager.stopPlayback()
+        releaseWakeLock()
+        if (isReceiverRegistered) {
+            try {
+                unregisterReceiver(screenUnlockReceiver)
+                isReceiverRegistered = false
+            } catch (e: Exception) {}
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun releaseWakeLock() {
@@ -262,19 +389,17 @@ class UnlockPlaybackService : Service() {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        } catch (e: Exception) {}
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Unlock Soundtrack Playback",
+                "Unlock Soundtrack Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Shows active soundtrack countdown and stop controls on phone unlock"
+                description = "Monitors device unlocks and plays your chosen soundtrack"
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
@@ -286,6 +411,12 @@ class UnlockPlaybackService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         releaseWakeLock()
+        if (isReceiverRegistered) {
+            try {
+                unregisterReceiver(screenUnlockReceiver)
+                isReceiverRegistered = false
+            } catch (e: Exception) {}
+        }
         serviceScope.cancel()
     }
 

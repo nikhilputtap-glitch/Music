@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.audio.AudioPlaybackState
@@ -21,9 +20,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -41,8 +40,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _allSongs = MutableStateFlow<List<SongItem>>(emptyList())
     val allSongs: StateFlow<List<SongItem>> = _allSongs.asStateFlow()
 
+    private val _notificationMessage = MutableStateFlow<String?>(null)
+    val notificationMessage: StateFlow<String?> = _notificationMessage.asStateFlow()
+
     init {
         refreshSongs()
+        // Ensure monitoring service is running in background if auto-play is enabled
+        viewModelScope.launch {
+            val current = repository.getSettingsSnapshot()
+            if (current.autoPlayEnabled) {
+                UnlockPlaybackService.startMonitoring(getApplication())
+            }
+        }
+    }
+
+    fun clearNotificationMessage() {
+        _notificationMessage.value = null
     }
 
     fun refreshSongs() {
@@ -75,13 +88,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleAutoPlay() {
         viewModelScope.launch {
             val current = settings.value.autoPlayEnabled
-            repository.updateAutoPlay(!current)
+            val newState = !current
+            repository.updateAutoPlay(newState)
+            val app = getApplication<Application>()
+            if (newState) {
+                UnlockPlaybackService.startMonitoring(app)
+                _notificationMessage.value = "Auto-Play Activated! Song will play every time you unlock your phone."
+            } else {
+                UnlockPlaybackService.stopMonitoring(app)
+                _notificationMessage.value = "Auto-Play Paused."
+            }
+        }
+    }
+
+    /**
+     * Sets a song as the active unlock soundtrack and starts background monitoring.
+     */
+    fun activateSongForUnlock(songId: String) {
+        viewModelScope.launch {
+            repository.setSelectedSong(songId)
+            repository.updateAutoPlay(true)
+            val app = getApplication<Application>()
+            UnlockPlaybackService.startMonitoring(app)
+
+            val song = repository.getSongById(songId)
+            val title = song?.title ?: "Track"
+            _notificationMessage.value = "✓ '$title' is set for Unlock Screen! Lock your phone and unlock to hear it."
         }
     }
 
     fun setDuration(seconds: Int) {
         viewModelScope.launch {
             repository.updateDuration(seconds)
+            _notificationMessage.value = "Duration set to ${seconds}s"
         }
     }
 
@@ -148,23 +187,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun completeOnboarding() {
         viewModelScope.launch {
             repository.setOnboardingCompleted(true)
+            val app = getApplication<Application>()
+            UnlockPlaybackService.startMonitoring(app)
         }
     }
 
     fun resetSettings() {
         viewModelScope.launch {
             repository.resetToDefaults()
+            val app = getApplication<Application>()
+            UnlockPlaybackService.startMonitoring(app)
+            _notificationMessage.value = "Settings reset to defaults."
         }
     }
 
     fun importAudioUri(uri: Uri, context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // Take persistable permission
                 val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION
                 context.contentResolver.takePersistableUriPermission(uri, takeFlags)
             } catch (e: Exception) {
-                // If persistable not available, standard uri access may still work
                 e.printStackTrace()
             }
 
@@ -186,7 +228,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 retriever.release()
             } catch (e: Exception) {
-                // Fallback to display name
                 uri.lastPathSegment?.let { seg ->
                     val clean = seg.substringAfterLast("/").substringAfterLast(":")
                     if (clean.isNotBlank()) title = clean
@@ -205,6 +246,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             repository.addCustomSong(newSong)
             refreshSongs()
+
+            // Directly activate for unlock screen!
+            activateSongForUnlock(newSong.id)
         }
     }
 
