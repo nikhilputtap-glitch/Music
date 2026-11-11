@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
@@ -48,6 +49,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -110,6 +117,8 @@ fun HomeScreen(
     )
 
     val durationPresets = listOf(10, 15, 20, 30, 45, 60)
+    val scope = rememberCoroutineScope()
+    var isSimulatingUnlock by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier
@@ -484,6 +493,38 @@ fun HomeScreen(
                             enabled = playbackState.isPlaying,
                             testTag = "stop_button"
                         )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // In-App Simulated Lock/Unlock Test Button
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Brush.horizontalGradient(listOf(Color(0xFF281848), Color(0xFF160E2A))))
+                            .border(1.dp, Color(0x4400F0FF), RoundedCornerShape(12.dp))
+                            .clickable {
+                                scope.launch {
+                                    isSimulatingUnlock = true
+                                    delay(1200)
+                                    isSimulatingUnlock = false
+                                    viewModel.playTestSoundtrack()
+                                }
+                            }
+                            .padding(vertical = 10.dp, horizontal = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.LockOpen, contentDescription = null, tint = ElectricBlue, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (isSimulatingUnlock) "Simulating Phone Lock/Unlock..." else "Simulate Lock & Unlock Sequence",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ElectricBlue
+                            )
+                        }
                     }
                 }
             }

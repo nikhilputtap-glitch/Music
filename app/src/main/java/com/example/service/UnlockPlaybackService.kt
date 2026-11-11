@@ -41,12 +41,36 @@ class UnlockPlaybackService : Service() {
 
     private val screenUnlockReceiver = object : BroadcastReceiver() {
         private var lastUnlockTime = 0L
+        private var wasScreenTurnedOff = false
+
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_USER_PRESENT) {
-                val now = SystemClock.elapsedRealtime()
+            val action = intent?.action ?: return
+            val now = SystemClock.elapsedRealtime()
+
+            if (action == Intent.ACTION_SCREEN_OFF) {
+                wasScreenTurnedOff = true
+                return
+            }
+
+            if (action == Intent.ACTION_USER_PRESENT) {
+                wasScreenTurnedOff = false
                 if (now - lastUnlockTime > 2500L) {
                     lastUnlockTime = now
                     handleStartPlayback(isTest = false)
+                }
+                return
+            }
+
+            if (action == Intent.ACTION_SCREEN_ON) {
+                val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+                val isLocked = km?.isKeyguardLocked ?: false
+                // Trigger if screen was turned off and now on without a blocking keyguard (swipe / no PIN / emulator)
+                if (wasScreenTurnedOff && !isLocked) {
+                    wasScreenTurnedOff = false
+                    if (now - lastUnlockTime > 2500L) {
+                        lastUnlockTime = now
+                        handleStartPlayback(isTest = false)
+                    }
                 }
             }
         }

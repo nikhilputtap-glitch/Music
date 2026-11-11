@@ -140,7 +140,7 @@ class UnlockAudioPlayerManager private constructor(private val context: Context)
                         .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                         .build()
                 )
-                setDataSource(context, Uri.parse(song.uriString))
+                setPlayerDataSource(this, song.uriString)
                 isLooping = true
                 setVolume(initialVolume, initialVolume)
                 prepare()
@@ -324,6 +324,35 @@ class UnlockAudioPlayerManager private constructor(private val context: Context)
                 elapsedSeconds = 0,
                 statusMessage = "Monitoring Active"
             )
+        }
+    }
+
+    private fun setPlayerDataSource(player: MediaPlayer, uriString: String) {
+        if (uriString.startsWith("content://")) {
+            try {
+                val uri = Uri.parse(uriString)
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                    player.setDataSource(pfd.fileDescriptor)
+                    return
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            player.setDataSource(context, Uri.parse(uriString))
+        } else {
+            val path = if (uriString.startsWith("file://")) {
+                Uri.parse(uriString).path ?: uriString.removePrefix("file://")
+            } else {
+                uriString
+            }
+            val file = java.io.File(path)
+            if (file.exists()) {
+                java.io.FileInputStream(file).use { fis ->
+                    player.setDataSource(fis.fd)
+                }
+            } else {
+                player.setDataSource(path)
+            }
         }
     }
 
